@@ -15,7 +15,7 @@ const ProfileContainer = () => {
     return (
         <div className="flex items-center gap-6">
             {isSignedIn ? (<UserButton afterSignOutUrl="/"/>) : (
-                <Link to={"/signin"}><Button size={"sm"}>Get Started</Button></Link>
+                <Link to={"/signup"}><Button size={"sm"}>Get Started</Button></Link>
             )}
         </div>
     );
