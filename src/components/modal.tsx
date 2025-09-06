@@ -1,10 +1,9 @@
-import { Description } from "@radix-ui/react-dialog";
+
 import { Dialog, 
     DialogContent,
     DialogDescription,
     DialogHeader,
-    DialogTitle,
-    DialogTrigger
+    DialogTitle
  } from "./ui/dialog";
 
  interface ModalProps {

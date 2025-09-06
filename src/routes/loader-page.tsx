@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { Loader } from "lucide-react";
 
-const LoaderPage = ({ className }: {className?: string }) => {
+const LoaderPage = ({ }: {className?: string }) => {
     return(
         <div className={cn(
             "w-screen h-screen flex items-center justify-center bg-transparent z-50"

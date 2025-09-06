@@ -6,18 +6,17 @@ import type { Interview } from "@/types"
 
 import { CustomBreadCrumb } from "./custom-bread-crumb";
 import { useEffect, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import {useNavigate } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
 import { toast } from "sonner";
 import { Headings } from "./headings";
-import { Loader, Trash, Trash2 } from "lucide-react";
+import { Loader, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "./ui/form";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { chatSession } from "@/scripts";
-import { GoogleGenerativeAIResponseError } from "@google/generative-ai";
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/config/firebase.config";
 
