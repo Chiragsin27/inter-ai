@@ -65,7 +65,7 @@ export const Dashboard = () => {
             <Separator className="my-8"/>
             {/* content section */}
 
-            <div className="md:grid md:grid-cols-3 gap3 py-4">
+            <div className="md:grid md:grid-cols-3 gap-3 py-4">
                 {loading ? Array.from({length : 6}).map((_,index)=>(
                     <Skeleton key={index} className="h-24 md:h-32 rounded-md"/>
                 )) : interviews.length > 0 ? interviews.map((interview) => (

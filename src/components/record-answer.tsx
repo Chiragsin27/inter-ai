@@ -17,8 +17,8 @@ import { useParams } from "react-router-dom";
 import WebCam from "react-webcam";
 import { TooltipButton } from "./tooltip-button";
 import { toast } from "sonner";
-import { chatSession } from "@/scripts";
-// import { SaveModal } from "./save-modal";
+import { apiClient } from "@/lib/api-client";
+import type { EvaluateResult } from "@/lib/api-client";
 import {
   addDoc,
   collection,
@@ -34,11 +34,6 @@ interface RecordAnswerProps {
   question: { question: string; answer: string };
   isWebCam: boolean;
   setIsWebCam: (value: boolean) => void;
-}
-
-interface AIResponse {
-  ratings: number;
-  feedback: string;
 }
 
 export const RecordAnswer = ({
@@ -59,11 +54,11 @@ export const RecordAnswer = ({
 
   const [userAnswer, setUserAnswer] = useState("");
   const [isAiGenerating, setIsAiGenerating] = useState(false);
-  const [aiResult, setAiResult] = useState<AIResponse | null>(null);
+  const [aiResult, setAiResult] = useState<EvaluateResult | null>(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const { userId } = useAuth();
+  const { userId, getToken } = useAuth();
   const { interviewId } = useParams();
 
   const recordUserAnswer = async () => {
@@ -74,73 +69,34 @@ export const RecordAnswer = ({
         toast.error("Error", {
           description: "Your answer should be more than 30 characters",
         });
-
         return;
       }
 
-      //   ai result
-      const aiResult = await generateResult(
-        question.question,
-        question.answer,
-        userAnswer
-      );
-
-      setAiResult(aiResult);
-      console.log(aiResult);
+      // Call backend to evaluate the answer
+      setIsAiGenerating(true);
+      try {
+        const result = await apiClient.evaluateAnswer(getToken, {
+          question: question.question,
+          correctAnswer: question.answer,
+          userAnswer,
+        });
+        setAiResult(result);
+      } catch (error) {
+        console.error(error);
+        toast.error("Error", {
+          description: "Failed to evaluate your answer. Please try again.",
+        });
+      } finally {
+        setIsAiGenerating(false);
+      }
     } else {
       startSpeechToText();
     }
   };
 
-  const cleanJsonResponse = (responseText: string) => {
-    // Step 1: Trim any surrounding whitespace
-    let cleanText = responseText.trim();
-
-    // Step 2: Remove any occurrences of "json" or code block symbols (``` or `)
-    cleanText = cleanText.replace(/(json|```|`)/g, "");
-
-    // Step 3: Parse the clean JSON text into an array of objects
-    try {
-      return JSON.parse(cleanText);
-    } catch (error) {
-      throw new Error("Invalid JSON format: " + (error as Error)?.message);
-    }
-  };
-
-  const generateResult = async (
-    qst: string,
-    qstAns: string,
-    userAns: string
-  ): Promise<AIResponse> => {
-    setIsAiGenerating(true);
-    const prompt = `
-      Question: "${qst}"
-      User Answer: "${userAns}"
-      Correct Answer: "${qstAns}"
-      Please compare the user's answer to the correct answer, and provide a rating (from 1 to 10) based on answer quality, and offer feedback for improvement.
-      Return the result in JSON format with the fields "ratings" (number) and "feedback" (string).
-    `;
-
-    try {
-      const aiResult = await chatSession.sendMessage(prompt);
-
-      const parsedResult: AIResponse = cleanJsonResponse(
-        aiResult.response.text()
-      );
-      return parsedResult;
-    } catch (error) {
-      console.log(error);
-      toast("Error", {
-        description: "An error occurred while generating feedback.",
-      });
-      return { ratings: 0, feedback: "Unable to generate feedback" };
-    } finally {
-      setIsAiGenerating(false);
-    }
-  };
-
   const recordNewAnswer = () => {
     setUserAnswer("");
+    setAiResult(null);
     stopSpeechToText();
     startSpeechToText();
   };
@@ -149,13 +105,15 @@ export const RecordAnswer = ({
     setLoading(true);
 
     if (!aiResult) {
+      toast.error("No result yet", {
+        description: "Please record and stop your answer first.",
+      });
+      setLoading(false);
       return;
     }
 
     const currentQuestion = question.question;
     try {
-      // query the firbase to check if the user answer already exists for this question
-
       const userAnswerQuery = query(
         collection(db, "userAnswers"),
         where("userId", "==", userId),
@@ -164,40 +122,35 @@ export const RecordAnswer = ({
 
       const querySnap = await getDocs(userAnswerQuery);
 
-      // if the user already answerd the question dont save it again
       if (!querySnap.empty) {
-        console.log("Query Snap Size", querySnap.size);
         toast.info("Already Answered", {
           description: "You have already answered this question",
         });
         return;
-      } else {
-        // save the user answer
-
-        await addDoc(collection(db, "userAnswers"), {
-          mockIdRef: interviewId,
-          question: question.question,
-          correct_ans: question.answer,
-          user_ans: userAnswer,
-          feedback: aiResult.feedback,
-          rating: aiResult.ratings,
-          userId,
-          createdAt: serverTimestamp(),
-        });
-
-        toast("Saved", { description: "Your answer has been saved.." });
       }
 
+      await addDoc(collection(db, "userAnswers"), {
+        mockIdRef: interviewId,
+        question: question.question,
+        correct_ans: question.answer,
+        user_ans: userAnswer,
+        feedback: aiResult.feedback,
+        rating: aiResult.ratings,
+        userId,
+        createdAt: serverTimestamp(),
+      });
+
+      toast.success("Saved", { description: "Your answer has been saved." });
       setUserAnswer("");
       stopSpeechToText();
     } catch (error) {
-      toast("Error", {
-        description: "An error occurred while generating feedback.",
+      toast.error("Error", {
+        description: "Failed to save your answer.",
       });
-      console.log(error);
+      console.error(error);
     } finally {
       setLoading(false);
-      setOpen(!open);
+      setOpen(false);
     }
   };
 
@@ -232,7 +185,7 @@ export const RecordAnswer = ({
         )}
       </div>
 
-      <div className="flex itece justify-center gap-3">
+      <div className="flex items-center justify-center gap-3">
         <TooltipButton
           content={isWebCam ? "Turn Off" : "Turn On"}
           icon={
@@ -264,7 +217,7 @@ export const RecordAnswer = ({
         />
 
         <TooltipButton
-          content="Save Result"
+          content={aiResult ? "Save Result" : "Record answer first"}
           icon={
             isAiGenerating ? (
               <Loader className="min-w-5 min-h-5 animate-spin" />
@@ -272,21 +225,33 @@ export const RecordAnswer = ({
               <Save className="min-w-5 min-h-5" />
             )
           }
-          onClick={() => setOpen(!open)}
-          disbaled={!aiResult}
+          onClick={() => {
+            if (aiResult) setOpen(true);
+          }}
+          disbaled={!aiResult || isAiGenerating}
         />
       </div>
+
+      {/* AI rating preview (shown after evaluation) */}
+      {aiResult && (
+        <div className="w-full p-4 border rounded-md bg-emerald-50 border-emerald-200">
+          <h2 className="text-base font-semibold text-emerald-800">
+            AI Rating: {aiResult.ratings} / 10
+          </h2>
+          <p className="text-sm mt-1 text-emerald-700">{aiResult.feedback}</p>
+        </div>
+      )}
 
       <div className="w-full mt-4 p-4 border rounded-md bg-gray-50">
         <h2 className="text-lg font-semibold">Your Answer:</h2>
 
         <p className="text-sm mt-2 text-gray-700 whitespace-normal">
-          {userAnswer || "Start recording to see your ansewer here"}
+          {userAnswer || "Start recording to see your answer here"}
         </p>
 
         {interimResult && (
           <p className="text-sm text-gray-500 mt-2">
-            <strong>Current Speech:</strong>
+            <strong>Current Speech: </strong>
             {interimResult}
           </p>
         )}
