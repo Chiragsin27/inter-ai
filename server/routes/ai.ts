@@ -4,8 +4,32 @@ import { GoogleGenAI } from "@google/genai/node";
 
 const router = Router();
 
-// ── Gemini client using the newer @google/genai SDK ──────────
-const ai = new GoogleGenAI({ apiKey: process.env.VITE_GEMINI_API_KEY! });
+// ── Gemini client ─────────────────────────────────────────────
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+
+// Model fallback chain — tries each in order if previous is unavailable/overloaded
+// Names verified against live API: ai.models.list()
+const MODEL_CHAIN = [
+  "gemini-3.8-flash",
+  "gemini-3.5-flash",
+  "gemini-2.5-flash",
+];
+
+// ── Generate content with automatic model fallback ────────────
+async function generateWithFallback(prompt: string): Promise<string> {
+  let lastError: unknown;
+  for (const model of MODEL_CHAIN) {
+    try {
+      const response = await ai.models.generateContent({ model, contents: prompt });
+      return response.text ?? "";
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[ai] model ${model} failed: ${msg} — trying next...`);
+      lastError = err;
+    }
+  }
+  throw lastError;
+}
 
 // ── Auth guard ───────────────────────────────────────────────
 const authGuard = (req: Request, res: Response, next: NextFunction) => {
@@ -58,12 +82,7 @@ Return ONLY the JSON array, no markdown, no explanation, no code fences.
 `.trim();
 
     try {
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: prompt,
-      });
-
-      const raw = response.text ?? "";
+      const raw = await generateWithFallback(prompt);
       const cleaned = cleanJson(raw);
 
       const match = cleaned.match(/\[[\s\S]*\]/);
@@ -72,8 +91,9 @@ Return ONLY the JSON array, no markdown, no explanation, no code fences.
       const questions = JSON.parse(match[0]);
       res.json({ questions });
     } catch (err) {
-      console.error("[generate-questions]", err);
-      res.status(500).json({ error: "Failed to generate questions" });
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[generate-questions]", msg);
+      res.status(500).json({ error: "Failed to generate questions", detail: msg });
     }
   }
 );
@@ -110,18 +130,14 @@ Return ONLY the JSON object, no markdown, no code fences, no extra text.
 `.trim();
 
     try {
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: prompt,
-      });
-
-      const raw = response.text ?? "";
+      const raw = await generateWithFallback(prompt);
       const cleaned = cleanJson(raw);
       const parsed = JSON.parse(cleaned);
       res.json({ ratings: parsed.ratings, feedback: parsed.feedback });
     } catch (err) {
-      console.error("[evaluate-answer]", err);
-      res.status(500).json({ error: "Failed to evaluate answer" });
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[evaluate-answer]", msg);
+      res.status(500).json({ error: "Failed to evaluate answer", detail: msg });
     }
   }
 );
