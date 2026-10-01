@@ -59,7 +59,7 @@ Return ONLY the JSON array, no markdown, no explanation, no code fences.
 
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.0-flash",
         contents: prompt,
       });
 
@@ -111,7 +111,7 @@ Return ONLY the JSON object, no markdown, no code fences, no extra text.
 
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.0-flash",
         contents: prompt,
       });
 
