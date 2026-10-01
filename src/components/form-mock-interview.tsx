@@ -6,7 +6,7 @@ import type { Interview } from "@/types"
 
 import { CustomBreadCrumb } from "./custom-bread-crumb";
 import { useEffect, useState } from "react";
-import {useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
 import { toast } from "sonner";
 import { Headings } from "./headings";
@@ -16,9 +16,10 @@ import { Separator } from "./ui/separator";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "./ui/form";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
-import { chatSession } from "@/scripts";
-import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { apiClient } from "@/lib/api-client";
+import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/config/firebase.config";
+import Modal from "./modal";
 
 interface FormMockInterviewProps{
     initialData: Interview | null
@@ -35,6 +36,7 @@ const formSchema = z.object({
 });
 
 type FormData = z.infer<typeof formSchema>
+
 export const FormMockInterview = ({initialData}: FormMockInterviewProps) => {
 
     const form = useForm<FormData>(
@@ -46,8 +48,10 @@ export const FormMockInterview = ({initialData}: FormMockInterviewProps) => {
 
     const {isValid, isSubmitting} = form.formState;
     const [loading, setLoading ] = useState(false);
+    const [deleteOpen, setDeleteOpen] = useState(false);
+    const [deleteLoading, setDeleteLoading] = useState(false);
     const navigate = useNavigate();
-    const {userId} = useAuth();
+    const { userId, getToken } = useAuth();
 
     const title = initialData?.position 
         ? initialData?.position
@@ -62,69 +66,26 @@ export const FormMockInterview = ({initialData}: FormMockInterviewProps) => {
     ? { title: "Updated..!", description: "Changes saved successfully..." }
     : { title: "Created..!", description: "New Mock Interview created..." };
     
-        const cleanAiResponse = (responseText: string) => {
-            let cleanText = responseText.trim();
-
-            cleanText = cleanText.replace(/(json|```|`)/g, "");
-
-            const jsonArrayMatch = cleanText.match(/\[.*\]/s);
-            if (jsonArrayMatch) {
-            cleanText = jsonArrayMatch[0];
-            } else {
-            throw new Error("No JSON array found in response");
-            }
-
-            try {
-            return JSON.parse(cleanText);
-            } catch (error) {
-            throw new Error("Invalid JSON format: " + (error as Error)?.message);
-            }
-        };
-        const generateAiResponse = async (data : FormData) => {
-            const prompt = `
-                As an experienced prompt engineer, generate a JSON array containing 5 technical interview questions along with detailed answers based on the following job information. Each object in the array should have the fields "question" and "answer", formatted as follows:
-
-                [
-                { "question": "<Question text>", "answer": "<Answer text>" },
-                ...
-                ]
-
-                Job Information:
-                - Job Position: ${data?.position}
-                - Job Description: ${data?.description}
-                - Years of Experience Required: ${data?.experience}
-                - Tech Stacks: ${data?.techStack}
-
-                The questions should assess skills in ${data?.techStack} development and best practices, problem-solving, and experience handling complex requirements. Please format the output strictly as an array of JSON objects without any additional labels, code blocks, or explanations. Return only the JSON array with questions and answers.
-                `;
-
-            const aiResult = await chatSession.sendMessage(prompt);
-            const cleanedResponse = cleanAiResponse(aiResult.response.text());
-            return cleanedResponse;
-        };
-    const onSubmit =async(data: FormData) => {
+    const onSubmit = async (data: FormData) => {
         try{
             setLoading(true);
             if(initialData){
-                // update
-                console.log(initialData);
                 if(isValid){
-                    const aiResult = await generateAiResponse(data);
+                    const { questions } = await apiClient.generateQuestions(getToken, data);
                     await updateDoc(doc(db,"interviews",initialData?.id),{
-                        questions: aiResult,
+                        questions,
                         ...data,
                         updatedAt : serverTimestamp()
                     })
                     toast(toastMessage.title,{description : toastMessage.description});
                 }
             } else{
-                // create new interview
                 if(isValid){
-                    const aiResult = await generateAiResponse(data);
+                    const { questions } = await apiClient.generateQuestions(getToken, data);
                     await addDoc(collection(db,"interviews"), {
                         ...data,
                         userId,
-                        questions: aiResult,
+                        questions,
                         createdAt: serverTimestamp()
                     });
                     toast(toastMessage.title,{description : toastMessage.description});
@@ -140,6 +101,23 @@ export const FormMockInterview = ({initialData}: FormMockInterviewProps) => {
             setLoading(false);
         }
     }
+
+    const handleDelete = async () => {
+        if (!initialData) return;
+        try {
+            setDeleteLoading(true);
+            await deleteDoc(doc(db, "interviews", initialData.id));
+            toast.success("Deleted", { description: "Interview deleted successfully." });
+            navigate("/generate", { replace: true });
+        } catch (error) {
+            console.error(error);
+            toast.error("Error", { description: "Failed to delete interview." });
+        } finally {
+            setDeleteLoading(false);
+            setDeleteOpen(false);
+        }
+    };
+
     useEffect(()=>{
         if(initialData){
             form.reset({
@@ -155,6 +133,27 @@ export const FormMockInterview = ({initialData}: FormMockInterviewProps) => {
 
     return(
         <div className="w-full flex-col space-y-4">
+            {/* Delete confirmation modal */}
+            <Modal
+                title="Delete Interview?"
+                description="This will permanently delete the interview and all saved answers. This action cannot be undone."
+                isOpen={deleteOpen}
+                onClose={() => setDeleteOpen(false)}
+            >
+                <div className="pt-6 space-x-2 flex items-center justify-end w-full">
+                    <Button disabled={deleteLoading} variant={"outline"} onClick={() => setDeleteOpen(false)}>
+                        Cancel
+                    </Button>
+                    <Button
+                        disabled={deleteLoading}
+                        variant={"destructive"}
+                        onClick={handleDelete}
+                    >
+                        {deleteLoading ? <Loader className="animate-spin" /> : "Delete"}
+                    </Button>
+                </div>
+            </Modal>
+
             <CustomBreadCrumb 
                 breadCrumbPage={breadCrumbPage}
                 breadCrumbItems={[{label: "Mock Interviews", link: "/generate"}]}
@@ -162,8 +161,13 @@ export const FormMockInterview = ({initialData}: FormMockInterviewProps) => {
             <div className="mt-4 flex items-center justify-between w-full">
                 <Headings title={title} isSubHeading/>
                 {initialData && (
-                    <Button size={"icon"} variant={"ghost"}>
-                        <Trash2 className="min-w-4  min-h-4 text-red-500"/>
+                    <Button
+                        size={"icon"}
+                        variant={"ghost"}
+                        onClick={() => setDeleteOpen(true)}
+                        type="button"
+                    >
+                        <Trash2 className="min-w-4 min-h-4 text-red-500"/>
                     </Button>
                 )}
             </div>
@@ -259,7 +263,7 @@ export const FormMockInterview = ({initialData}: FormMockInterviewProps) => {
                                         {...field}
                                         disabled={loading}
                                         className="h-12"
-                                        placeholder="eg:-Full stack"
+                                        placeholder="eg:-React, Node.js, TypeScript"
                                         value={field.value || ""}
                                     />
                                 </FormControl>
@@ -268,7 +272,9 @@ export const FormMockInterview = ({initialData}: FormMockInterviewProps) => {
                     />
                     <div className="w-full flex items-center justify-end gap-6">
                             <Button type="reset" size={"sm"} variant={"outline"} disabled={isSubmitting || loading}>Reset</Button>
-                            <Button type="submit" size={"sm"} disabled={isSubmitting || loading || !isValid}>{loading ? <Loader/> : (actions) }</Button>
+                            <Button type="submit" size={"sm"} disabled={isSubmitting || loading || !isValid}>
+                                {loading ? <><Loader className="animate-spin mr-2" /> Generating…</> : actions}
+                            </Button>
                     </div>
                 </form>
             </FormProvider>

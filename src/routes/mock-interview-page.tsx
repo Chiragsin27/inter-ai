@@ -14,7 +14,7 @@ export const MockInterviewPage = () => {
 
     const { interviewId } = useParams<{interviewId: string}>();
     const [interview, setInterview] = useState<Interview | null>(null);
-    const [isLoading, ] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
     
     const navigate = useNavigate();
     
@@ -25,10 +25,17 @@ export const MockInterviewPage = () => {
                     const interviewDoc = await getDoc(doc(db,"interviews",interviewId));
                     if(interviewDoc.exists()){
                         setInterview({id:interviewDoc.id,  ...interviewDoc.data()} as Interview);
+                    } else {
+                        navigate("/generate", {replace: true});
                     }
                 } catch(error){
                     console.log(error);
+                    navigate("/generate", {replace: true});
+                } finally {
+                    setIsLoading(false);
                 }
+            } else {
+                navigate("/generate", {replace: true});
             }
         };
         fetchInterview();
@@ -36,12 +43,6 @@ export const MockInterviewPage = () => {
     
     if(isLoading){
         return <LoaderPage className="w-full h-[70vh]"/>
-    }
-    if(!interviewId){
-        navigate("/generate", {replace: true});
-    }
-    if(!interview){
-        navigate("/generate", {replace: true});
     }
 
     return (
