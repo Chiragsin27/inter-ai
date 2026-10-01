@@ -5,7 +5,7 @@ import { GoogleGenAI } from "@google/genai/node";
 const router = Router();
 
 // ── Gemini client using the newer @google/genai SDK ──────────
-const ai = new GoogleGenAI({ apiKey: process.env.VITE_GEMINI_API_KEY! });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 // ── Auth guard ───────────────────────────────────────────────
 const authGuard = (req: Request, res: Response, next: NextFunction) => {
