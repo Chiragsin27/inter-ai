@@ -24,14 +24,26 @@ app.use(
 );
 app.use(express.json());
 
-// Clerk auth middleware — parses the Bearer token on every request
-// and attaches auth state to req.auth
-app.use(
-  clerkMiddleware({
-    secretKey: process.env.CLERK_SECRET_KEY,
-    publishableKey: process.env.VITE_CLERK_PUBLISHABLE_KEY,
-  })
-);
+// Clerk auth middleware — skip gracefully if keys are missing/invalid
+const clerkSecret = process.env.CLERK_SECRET_KEY;
+const clerkPublishable = process.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+if (!clerkSecret) {
+  console.warn("[clerk] CLERK_SECRET_KEY is not set — auth will reject all requests");
+}
+
+try {
+  app.use(
+    clerkMiddleware({
+      secretKey: clerkSecret,
+      publishableKey: clerkPublishable,
+    })
+  );
+} catch (e) {
+  console.error("[clerk] Failed to initialize middleware:", e);
+  // fallback: mark every request as unauthenticated
+  app.use((_req: express.Request, _res: express.Response, next: express.NextFunction) => next());
+}
 
 // ── Routes ──────────────────────────────────────────────────
 app.use("/api/ai", aiRouter);
