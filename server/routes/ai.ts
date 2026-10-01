@@ -1,11 +1,19 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { getAuth } from "@clerk/express";
-import { GoogleGenAI } from "@google/genai/node";
+import { GoogleGenAI } from "@google/genai";
 
 const router = Router();
 
-// ── Gemini client ─────────────────────────────────────────────
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+// ── Gemini client — lazily initialized on first request ───────
+let _ai: GoogleGenAI | null = null;
+function getAI(): GoogleGenAI {
+  if (!_ai) {
+    const key = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+    if (!key) throw new Error("GEMINI_API_KEY is not configured");
+    _ai = new GoogleGenAI({ apiKey: key });
+  }
+  return _ai;
+}
 
 // Model fallback chain — tries each in order if previous is unavailable/overloaded
 // Names verified against live API: ai.models.list()
@@ -17,6 +25,7 @@ const MODEL_CHAIN = [
 
 // ── Generate content with automatic model fallback ────────────
 async function generateWithFallback(prompt: string): Promise<string> {
+  const ai = getAI();
   let lastError: unknown;
   for (const model of MODEL_CHAIN) {
     try {
