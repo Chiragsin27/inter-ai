@@ -72,8 +72,9 @@ Return ONLY the JSON array, no markdown, no explanation, no code fences.
       const questions = JSON.parse(match[0]);
       res.json({ questions });
     } catch (err) {
-      console.error("[generate-questions]", err);
-      res.status(500).json({ error: "Failed to generate questions" });
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[generate-questions]", msg);
+      res.status(500).json({ error: "Failed to generate questions", detail: msg });
     }
   }
 );
@@ -120,8 +121,9 @@ Return ONLY the JSON object, no markdown, no code fences, no extra text.
       const parsed = JSON.parse(cleaned);
       res.json({ ratings: parsed.ratings, feedback: parsed.feedback });
     } catch (err) {
-      console.error("[evaluate-answer]", err);
-      res.status(500).json({ error: "Failed to evaluate answer" });
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[evaluate-answer]", msg);
+      res.status(500).json({ error: "Failed to evaluate answer", detail: msg });
     }
   }
 );

@@ -8,7 +8,20 @@ const app = express();
 const PORT = process.env.SERVER_PORT || 3000;
 
 // ── Middleware ──────────────────────────────────────────────
-app.use(cors({ origin: process.env.CLIENT_URL || "http://localhost:5173", credentials: true }));
+const allowedOrigins = [
+  /^http:\/\/localhost:\d+$/,
+  /^https:\/\/[\w-]+\.vercel\.app$/,
+];
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      // allow server-to-server (no origin) or matching origins
+      if (!origin || allowedOrigins.some((r) => r.test(origin))) return cb(null, true);
+      cb(new Error(`CORS: origin not allowed — ${origin}`));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // Clerk auth middleware — parses the Bearer token on every request
@@ -33,5 +46,11 @@ if (process.env.NODE_ENV !== "production") {
     console.log(`🚀  Server running on http://localhost:${PORT}`);
   });
 }
+
+// ── Global error handler ─────────────────────────────────────
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error("[unhandled]", err);
+  res.status(500).json({ error: err.message || "Internal server error" });
+});
 
 export default app;
